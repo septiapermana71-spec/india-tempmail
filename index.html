@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#5146d8">
+<title>IndiaTempMail — Temporary Email Inbox</title>
+<meta name="description" content="Create a temporary email address and check incoming messages in your browser.">
+<style>
+:root{--bg:#f5f6fc;--card:#fff;--ink:#17172b;--muted:#697087;--brand:#5146d8;--line:#e5e7f0}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink)}
+header{background:linear-gradient(120deg,#4438bb,#7969ef);color:#fff;padding:22px 16px 56px}
+nav,main{max-width:900px;margin:auto}nav{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px}.logo{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:#ffffff25}
+.hero{text-align:center;margin:27px auto 0;max-width:650px}.hero h1{font-size:clamp(29px,6vw,42px);line-height:1.12;margin:0 0 10px}.hero p{margin:0;color:#efedff}
+main{padding:0 14px 35px;margin-top:-30px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 10px 30px #29245b0b;margin-bottom:16px}
+.label{font-size:13px;font-weight:750;color:var(--muted);margin-bottom:8px}.address-row{display:flex;gap:8px}.address{min-width:0;flex:1;border:1px solid var(--line);background:#f9f9ff;border-radius:12px;padding:13px 12px;font-weight:750;overflow-wrap:anywhere}
+button{border:0;border-radius:11px;background:var(--brand);color:white;font-weight:750;padding:12px 15px;cursor:pointer;font-size:14px}button.secondary{background:#efedff;color:#4e40c5}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.status{font-size:13px;color:var(--muted);margin-top:10px;min-height:20px}.topline{display:flex;align-items:center;justify-content:space-between;gap:10px}.topline h2{font-size:19px;margin:0}.pill{font-size:12px;background:#e9f8ef;color:#167b43;border-radius:99px;padding:5px 9px;font-weight:700}
+.empty{padding:28px 10px;text-align:center;color:var(--muted)}.mailrow{border:1px solid var(--line);padding:13px;border-radius:12px;margin-top:10px;cursor:pointer}.mailrow strong{display:block;overflow-wrap:anywhere}.mailrow small{color:var(--muted)}.preview{color:#62677b;margin-top:4px;overflow-wrap:anywhere}.message{white-space:pre-wrap;overflow-wrap:anywhere;background:#fafaff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px;max-height:50vh;overflow:auto}.otp{font-size:26px;font-weight:850;letter-spacing:3px;color:var(--brand);margin:8px 0}
+footer{text-align:center;color:var(--muted);font-size:12px;padding:0 20px 25px}
+@media(max-width:520px){.card{padding:16px}.address-row{flex-direction:column}.address-row button{width:100%}.topline{align-items:flex-start}}
+</style>
+</head>
+<body>
+<header><nav><span class="logo">✉</span> IndiaTempMail</nav><div class="hero"><h1>Your temporary inbox</h1><p>Create a disposable email address and check incoming messages in one place.</p></div></header>
+<main>
+<section class="card">
+<div class="label">YOUR TEMPORARY EMAIL ADDRESS</div>
+<div class="address-row"><div class="address" id="address">Preparing inbox…</div><button id="copyBtn" class="secondary">Copy address</button></div>
+<div class="actions"><button id="newBtn">Generate new address</button><button id="refreshBtn" class="secondary">Refresh inbox</button></div>
+<div class="status" id="status" role="status">Set your Worker URL in this file, then deploy the backend.</div>
+</section>
+<section class="card">
+<div class="topline"><h2>Inbox</h2><span class="pill" id="count">0 messages</span></div>
+<p style="color:var(--muted);font-size:13px;margin:6px 0 12px">Messages refresh automatically every 10 seconds. This inbox is accessible to anyone with its private link. Do not use it for sensitive accounts.</p>
+<div id="inbox"><div class="empty">Generate an address to start.</div></div>
+</section>
+<section class="card" id="messageCard" hidden><div class="topline"><h2 id="msgSubject">Message</h2><button class="secondary" id="closeMsg">Close</button></div><div id="msgMeta" class="status"></div><div id="otpBox"></div><div id="msgBody" class="message"></div></section>
+</main>
+<footer>Some websites block disposable email addresses. OTP delivery is not guaranteed. Use responsibly.</footer>
+<script>
+/* IMPORTANT: replace this URL after deploying worker.js */
+const API_BASE = "https://REPLACE-WITH-YOUR-WORKER.workers.dev";
+const $ = id => document.getElementById(id);
+let inboxToken = new URLSearchParams(location.search).get("inbox") || "";
+let currentAddress = "";
+let poller = null;
+function configured(){return API_BASE.startsWith("https://") && !API_BASE.includes("REPLACE-WITH-YOUR-WORKER");}
+async function api(path,options={}){
+ if(!configured())throw new Error("Setup incomplete: replace API_BASE in index.html with your deployed Worker URL.");
+ const res=await fetch(API_BASE.replace(/\/$/,"")+path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
+ const data=await res.json().catch(()=>({error:"Unexpected server response"}));
+ if(!res.ok)throw new Error(data.error||"Request failed");return data;
+}
+function setStatus(s){$("status").textContent=s;}
+async function createInbox(){
+ $("newBtn").disabled=true;setStatus("Creating inbox…");
+ try{
+  const d=await api("/api/new",{method:"POST",body:"{}"});
+  inboxToken=d.token;currentAddress=d.address;
+  history.replaceState({},"","?inbox="+encodeURIComponent(inboxToken));
+  $("address").textContent=currentAddress;$("messageCard").hidden=true;
+  $("inbox").innerHTML='<div class="empty">Waiting for incoming email…</div>';
+  $("count").textContent="0 messages";setStatus("Inbox ready. Keep this private URL to access your inbox.");
+  if(poller)clearInterval(poller);await refreshInbox();poller=setInterval(refreshInbox,10000);
+ }catch(e){setStatus(e.message);}
+ finally{$("newBtn").disabled=false;}
+}
+async function refreshInbox(){
+ if(!inboxToken){setStatus("Generate an address to get started.");return;}
+ try{
+  const d=await api("/api/inbox/"+encodeURIComponent(inboxToken));
+  currentAddress=d.address;$("address").textContent=currentAddress;
+  const messages=d.messages||[];$("count").textContent=messages.length+" message"+(messages.length===1?"":"s");
+  if(!messages.length){$("inbox").innerHTML='<div class="empty">No messages yet. Checking again automatically…</div>';return;}
+  $("inbox").replaceChildren();
+  for(const m of messages){
+   const el=document.createElement("div");el.className="mailrow";
+   const from=document.createElement("small");from.textContent=(m.sender||"Unknown sender")+" · "+new Date(m.received_at).toLocaleString();
+   const subject=document.createElement("strong");subject.textContent=m.subject||"(No subject)";
+   const preview=document.createElement("div");preview.className="preview";preview.textContent=(m.otp?"Detected OTP: "+m.otp+" · ":"")+(m.preview||"");
+   el.append(from,subject,preview);el.addEventListener("click",()=>showMessage(m.id));$("inbox").append(el);
+  }
+ }catch(e){setStatus(e.message);}
+}
+async function showMessage(id){
+ try{
+  const m=await api("/api/message/"+encodeURIComponent(inboxToken)+"/"+encodeURIComponent(id));
+  $("messageCard").hidden=false;$("msgSubject").textContent=m.subject||"(No subject)";
+  $("msgMeta").textContent=(m.sender||"Unknown sender")+" · "+new Date(m.received_at).toLocaleString();
+  $("otpBox").replaceChildren();
+  if(m.otp){const code=document.createElement("div");code.className="otp";code.textContent=m.otp;const copy=document.createElement("button");copy.className="secondary";copy.textContent="Copy OTP";copy.onclick=async()=>{try{await navigator.clipboard.writeText(m.otp);setStatus("OTP copied.");}catch{setStatus("Select and copy the OTP manually.");}};$("otpBox").append(code,copy);}
+  $("msgBody").textContent=m.body_text||"(No plain-text body found)";
+  $("messageCard").scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(e){setStatus(e.message);}
+}
+$("newBtn").addEventListener("click",createInbox);
+$("refreshBtn").addEventListener("click",refreshInbox);
+$("copyBtn").addEventListener("click",async()=>{if(!currentAddress)return;try{await navigator.clipboard.writeText(currentAddress);setStatus("Email address copied.");}catch{setStatus("Copy unavailable. Select the address manually.");}});
+$("closeMsg").addEventListener("click",()=>$("messageCard").hidden=true);
+if(inboxToken){refreshInbox();poller=setInterval(refreshInbox,10000);}else{$("address").textContent="Ready to generate";setStatus("Deploy the Worker and set API_BASE to begin.");}
+</script>
+</body></html>

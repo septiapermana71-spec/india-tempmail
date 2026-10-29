@@ -1,0 +1,16 @@
+name = "india-tempmail-api"
+main = "worker.js"
+compatibility_date = "2026-10-30"
+
+[vars]
+MAIL_DOMAIN = "YOUR-OWN-DOMAIN.IN"
+INBOX_TTL_HOURS = "2"
+MESSAGE_TTL_HOURS = "2"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "india-tempmail-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[triggers]
+crons = ["*/15 * * * *"]
